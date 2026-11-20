@@ -1,0 +1,12 @@
+[Unit]
+Description=Voice Assistant
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/voice-assistant
+Restart=on-failure
+Environment=LD_LIBRARY_PATH=%h/.local/ollama/lib:%h/.local/share/piper
+
+[Install]
+WantedBy=default.target
