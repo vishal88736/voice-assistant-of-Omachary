@@ -50,13 +50,14 @@ class Assistant:
     def set_confirm_callback(self, cb):
         self.permissions.confirm = cb
 
-    def start(self) -> None:
+    def start(self, enable_wake: bool = True) -> None:
         self._running = True
         if self.settings.startup_greeting and self._is_greeting_time():
             greeting = self._greeting_text()
             self._say(greeting)
-        self._wake_thread = threading.Thread(target=self._wake_loop, daemon=True)
-        self._wake_thread.start()
+        if enable_wake:
+            self._wake_thread = threading.Thread(target=self._wake_loop, daemon=True)
+            self._wake_thread.start()
 
     def stop(self) -> None:
         self._running = False

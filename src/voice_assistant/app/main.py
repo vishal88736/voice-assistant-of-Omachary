@@ -49,7 +49,11 @@ def main():
 
     if args.cli:
         assistant.on_state = lambda state, text: None
-        assistant.start()
+        def _confirm(desc, risk):
+            ans = input(f"Allow {desc}? [y/N] ").strip().lower()
+            return ans == "y"
+        assistant.set_confirm_callback(_confirm)
+        assistant.start(enable_wake=False)
         print(f"{settings.assistant_name} ready. Type 'quit' to exit.")
         try:
             while True:
@@ -67,6 +71,13 @@ def main():
     app = QApplication(sys.argv)
     window = AssistantWindow(assistant)
     assistant.on_state = window.update_state
+
+    def _confirm(desc, risk):
+        from PySide6.QtWidgets import QMessageBox
+        res = QMessageBox.question(window, "Permission", f"Allow {desc}?", QMessageBox.Yes | QMessageBox.No)
+        return res == QMessageBox.Yes
+
+    assistant.set_confirm_callback(_confirm)
     assistant.start()
     window.show()
     ret = app.exec()
