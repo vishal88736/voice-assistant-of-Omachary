@@ -27,6 +27,9 @@ class PiperTTS:
 
     def speak(self, text: str) -> None:
         self.stop()
+        if self.voice == "placeholder":
+            log.info("TTS placeholder: %s", text)
+            return
         model = self._model_path()
         if not model.exists():
             log.warning("TTS voice model missing: %s", model)

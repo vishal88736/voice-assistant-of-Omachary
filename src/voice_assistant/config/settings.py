@@ -22,10 +22,10 @@ class Settings:
     assistant_name: str = "Nova"
     wake_word: str = "nova"
     language_mode: str = "auto"  # auto | en | hi | hinglish
-    tts_voice: str = "en_US-lessac-medium"
+    tts_voice: str = "placeholder"
     tts_speed: float = 1.0
-    stt_model: str = "base"  # tiny | base | small
-    llm_model: str = "qwen2.5:7b"
+    stt_model: str = "placeholder"  # placeholder | tiny | base | small
+    llm_model: str = "placeholder"  # placeholder until user selects a model
     llm_keep_alive_seconds: int = 90
     startup_greeting: bool = True
     quiet_hours_start: int = 23

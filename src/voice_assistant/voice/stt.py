@@ -11,6 +11,9 @@ log = get_logger()
 
 
 def transcribe_file(path: Path) -> str:
+    import shutil
+    if shutil.which("voxtype") is None:
+        return ""
     try:
         p = subprocess.run(
             ["voxtype", "transcribe", str(path)],

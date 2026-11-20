@@ -125,6 +125,13 @@ class Assistant:
             return reply
 
         # conversational -> LLM on demand
+        if self.settings.llm_model == "placeholder":
+            reply = "Model not configured yet. Set a model in settings when ready."
+            self.memory.add_message(self.session_id, "assistant", reply)
+            self.history.append({"role": "assistant", "content": reply})
+            self.on_state("idle", reply)
+            self._maybe_speak(reply)
+            return reply
         if not self.ollama.is_available():
             reply = "Local AI model service (Ollama) is not running. Start it with 'ollama serve'."
             self._say(reply)
