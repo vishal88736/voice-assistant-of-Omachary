@@ -42,15 +42,20 @@ class ToolRegistry:
         tool = self.get(name)
         if tool is None:
             return ToolResult(ok=False, error=f"Unknown tool: {name}")
+        from ..config.logger import get_logger
+        log = get_logger()
         from ..security.permissions import Risk
         risk = Risk(tool.risk)
         desc = f"{tool.name}({args})"
         if not permission_manager.allowed(risk, desc):
+            log.warning("DENIED %s", desc)
             return ToolResult(ok=False, error="Permission denied")
+        log.info("EXEC %s", desc)
         t0 = time.time()
         try:
             res = tool.func(args)
         except Exception as e:
             res = ToolResult(ok=False, error=str(e))
         res.duration_ms = int((time.time() - t0) * 1000)
+        log.info("RESULT %s ok=%s", name, res.ok)
         return res
