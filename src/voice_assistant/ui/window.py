@@ -88,10 +88,13 @@ class Worker(QThread):
 
 
 class AssistantWindow(QWidget):
+    state_signal = Signal(str, str)
+
     def __init__(self, assistant):
         super().__init__()
         self.assistant = assistant
         self.worker: Worker | None = None
+        self.state_signal.connect(self.update_state)
         self._build()
         self._refresh_sessions()
         self._load_current_session()

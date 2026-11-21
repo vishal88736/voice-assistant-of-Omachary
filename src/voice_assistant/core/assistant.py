@@ -14,6 +14,7 @@ from ..core.intent import classify
 from ..llm.ollama import OllamaClient
 from ..memory.store import MemoryStore
 from ..security.permissions import PermissionManager
+from ..system.power import available_memory_gb, on_ac_power
 from ..tools.registry import ToolRegistry
 from ..tools.system_tools import register_all
 from ..voice.audio import AudioRecorder
@@ -44,6 +45,7 @@ class Assistant:
         self._llm_last_used = 0.0
         self._running = False
         self._wake_thread: threading.Thread | None = None
+        self._unload_timer: threading.Timer | None = None
         self._lock = threading.Lock()
 
     def _confirm(self, desc: str, risk) -> bool:
@@ -53,6 +55,32 @@ class Assistant:
 
     def set_confirm_callback(self, cb):
         self.permissions.confirm = cb
+
+    def _effective_model(self) -> str:
+        if self.settings.battery_aware and not on_ac_power():
+            if self.settings.llm_model_battery and self.settings.llm_model_battery != "placeholder":
+                return self.settings.llm_model_battery
+        return self.settings.llm_model
+
+    def _effective_keep_alive(self) -> int:
+        if self.settings.battery_aware and not on_ac_power():
+            return max(5, self.settings.llm_keep_alive_battery_seconds)
+        return max(5, self.settings.llm_keep_alive_seconds)
+
+    def _schedule_unload(self) -> None:
+        if self._unload_timer is not None:
+            self._unload_timer.cancel()
+        delay = self._effective_keep_alive()
+        self._unload_timer = threading.Timer(delay, self._unload_model)
+        self._unload_timer.daemon = True
+        self._unload_timer.start()
+
+    def _unload_model(self) -> None:
+        with self._lock:
+            model = self._effective_model()
+            self.ollama.unload(model)
+            loaded = {m.get("name") for m in self.ollama.ps()}
+            log.info("LLM unload requested for %s; loaded now: %s", model, loaded or "none")
 
     def start(self, enable_wake: bool = True) -> None:
         self._running = True
@@ -93,12 +121,17 @@ class Assistant:
 
     def stop(self) -> None:
         self._running = False
+        if self._unload_timer is not None:
+            self._unload_timer.cancel()
+            self._unload_timer = None
         # summarize session lightly
         summary = None
         if self.history:
             summary = "Discussed: " + "; ".join(m["content"][:60] for m in self.history if m["role"] == "user")[:300]
         self.memory.end_session(self.session_id, summary)
         self.ollama.unload(self.settings.llm_model)
+        if self.settings.llm_model_battery != "placeholder":
+            self.ollama.unload(self.settings.llm_model_battery)
         log.info("Assistant stopped")
 
     def _is_greeting_time(self) -> bool:
@@ -157,7 +190,8 @@ class Assistant:
             return reply
 
         # conversational -> LLM on demand
-        if self.settings.llm_model == "placeholder":
+        model = self._effective_model()
+        if model == "placeholder":
             reply = "Model not configured yet. Set a model in settings when ready."
             self.memory.add_message(self.session_id, "assistant", reply)
             self.history.append({"role": "assistant", "content": reply})
@@ -168,14 +202,23 @@ class Assistant:
             reply = "Local AI model service (Ollama) is not running. Start it with 'ollama serve'."
             self._say(reply)
             return reply
+        free_gb = available_memory_gb()
+        if free_gb < 1.0:
+            reply = f"Memory is low ({free_gb:.1f} GB free). Command mode only for now."
+            self.on_state("idle", reply)
+            return reply
 
         # Privacy: no long-term personal memory is injected into the model.
         msgs = build_messages(self.history[:-1], text, self.settings, [])
-        # ensure model loaded with keep_alive timeout
-        keep_alive = self.settings.llm_keep_alive_seconds
+        keep_alive = self._effective_keep_alive()
         self.on_state("thinking", "")
         try:
-            reply = self.ollama.chat(self.settings.llm_model, msgs, keep_alive=keep_alive)
+            reply = self.ollama.chat(
+                model,
+                msgs,
+                keep_alive=keep_alive,
+                options={"num_ctx": self.settings.llm_num_ctx},
+            )
         except Exception as e:
             reply = f"Model error: {e}"
         if not reply:
@@ -185,8 +228,8 @@ class Assistant:
         self._llm_last_used = time.time()
         self.on_state("idle", reply)
         self._maybe_speak(reply)
-        # schedule unload check
-        threading.Thread(target=self._unload_after_idle, daemon=True).start()
+        # schedule a single idle unload timer (cancelled/reset on next use)
+        self._schedule_unload()
         return reply
 
     def _format_tool_result(self, tool_name: str, data: Any) -> str:
@@ -215,12 +258,6 @@ class Assistant:
             self.tts.speak(text)
         except Exception as e:
             log.error("speak error: %s", e)
-
-    def _unload_after_idle(self) -> None:
-        time.sleep(self.settings.llm_keep_alive_seconds)
-        if time.time() - self._llm_last_used >= self.settings.llm_keep_alive_seconds - 5:
-            self.ollama.unload(self.settings.llm_model)
-            log.info("LLM unloaded after idle")
 
     def _wake_loop(self) -> None:
         # lightweight wake detection: capture 2s chunks, transcribe, check wake word

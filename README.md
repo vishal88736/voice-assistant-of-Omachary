@@ -43,6 +43,13 @@ Piper voices stored in ~/.local/share/voice_assistant/voices.
 - File edits, deletes, moves, and other high-risk actions require explicit confirmation.
 - No personal profile is injected into the model.
 
+## Battery and performance
+- LLM loads only for conversation and unloads after idle (90s AC / 20s battery).
+- Deterministic commands never load the LLM.
+- On battery, a smaller `llm_model_battery` can be used automatically.
+- Wake detection is disabled until a wake model is integrated.
+- See [docs/performance.md](docs/performance.md) for tuning and measured numbers.
+
 ## Placeholders
 - `llm_model = "placeholder"` — select your model when ready.
 - `tts_voice = "placeholder"` and `stt_model = "placeholder"` — integrate your voice model when ready.

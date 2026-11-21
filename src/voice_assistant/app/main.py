@@ -70,7 +70,7 @@ def main():
 
     app = QApplication(sys.argv)
     window = AssistantWindow(assistant)
-    assistant.on_state = window.update_state
+    assistant.on_state = window.state_signal.emit
 
     def _confirm(desc, risk):
         from PySide6.QtWidgets import QMessageBox

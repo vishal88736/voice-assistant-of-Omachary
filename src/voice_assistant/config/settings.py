@@ -27,7 +27,12 @@ class Settings:
     tts_speed: float = 1.0
     stt_model: str = "placeholder"  # placeholder | tiny | base | small
     llm_model: str = "placeholder"  # placeholder until user selects a model
+    llm_model_battery: str = "placeholder"  # optional smaller model on battery
     llm_keep_alive_seconds: int = 90
+    llm_keep_alive_battery_seconds: int = 20
+    llm_num_ctx: int = 4096
+    battery_aware: bool = True
+    min_free_memory_gb: float = 2.0
     startup_greeting: bool = True
     wake_enabled: bool = False  # enable after a real wake-word/STT provider is integrated
     quiet_hours_start: int = 23

@@ -1,9 +1,9 @@
-"""Ollama HTTP client."""
+"""Ollama HTTP client with on-demand lifecycle support."""
 
 from __future__ import annotations
 
 import json
-from typing import Iterable
+from typing import Any
 
 import httpx
 
@@ -27,12 +27,34 @@ class OllamaClient:
         except Exception:
             return []
 
-    def chat(self, model: str, messages: list[dict], keep_alive: int | str = 0, stream: bool = False) -> str:
-        payload = {"model": model, "messages": messages, "stream": stream, "keep_alive": keep_alive}
-        r = httpx.post(f"{self.base_url}/api/chat", json=payload, timeout=120)
+    def ps(self) -> list[dict[str, Any]]:
+        """Return models currently loaded in RAM/VRAM."""
+        try:
+            r = httpx.get(f"{self.base_url}/api/ps", timeout=5)
+            r.raise_for_status()
+            return r.json().get("models", [])
+        except Exception:
+            return []
+
+    def chat(
+        self,
+        model: str,
+        messages: list[dict],
+        keep_alive: int | str = 0,
+        stream: bool = False,
+        options: dict[str, Any] | None = None,
+    ) -> str:
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": stream,
+            "keep_alive": keep_alive,
+        }
+        if options:
+            payload["options"] = options
+        r = httpx.post(f"{self.base_url}/api/chat", json=payload, timeout=180)
         r.raise_for_status()
         if stream:
-            # collect
             out = []
             for line in r.iter_lines():
                 if not line:
@@ -44,7 +66,11 @@ class OllamaClient:
 
     def unload(self, model: str) -> None:
         try:
-            httpx.post(f"{self.base_url}/api/generate", json={"model": model, "keep_alive": 0}, timeout=10)
+            httpx.post(
+                f"{self.base_url}/api/generate",
+                json={"model": model, "keep_alive": 0, "prompt": ""},
+                timeout=10,
+            )
         except Exception:
             pass
 

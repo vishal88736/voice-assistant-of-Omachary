@@ -30,6 +30,13 @@
 - RSS: ~114 MB
 - GPU: 0 MiB (no model loaded)
 
+## Model lifecycle
+- Single idle unload timer (90s AC / 20s battery).
+- Battery-aware model selection.
+- Low-memory fallback to command mode.
+- `num_ctx` and `keep_alive` passed to Ollama.
+- Measured qwen2.5:7b: 6.0s cold start, 4,648 MiB VRAM loaded, 2 MiB after unload.
+
 ## Known limitations
 - Wake word is heuristic (energy + transcription), not trained.
 - High-risk actions default deny unless confirmed.
