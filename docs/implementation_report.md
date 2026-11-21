@@ -25,6 +25,11 @@
 ## Tests
 - pytest: 7 passed (intent, memory, tools).
 
+## Measured idle (with placeholders, no wake loop)
+- CPU: ~0.5%
+- RSS: ~114 MB
+- GPU: 0 MiB (no model loaded)
+
 ## Known limitations
 - Wake word is heuristic (energy + transcription), not trained.
 - High-risk actions default deny unless confirmed.
