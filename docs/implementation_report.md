@@ -11,9 +11,16 @@
 - Startup integration (systemd user services, Hyprland autostart, desktop entry).
 - Audit logging.
 
+## UI and sessions
+- Compact dark UI with session sidebar, chat history, new/delete/forget controls.
+- Per-session conversation history in SQLite.
+- Auto-retention deletes old sessions; privacy mode clears long-term memories.
+- File edits/deletes/moves require explicit confirmation.
+
 ## Placeholders
-- LLM model: configurable; default placeholder (user to select).
-- Voice STT/TTS: optional; defaults placeholder, no-op if unavailable.
+- LLM model: `placeholder` (user to select).
+- Voice STT/TTS: `placeholder` (user to integrate).
+- Wake model: `placeholder` (user to integrate).
 
 ## Tests
 - pytest: 7 passed (intent, memory, tools).

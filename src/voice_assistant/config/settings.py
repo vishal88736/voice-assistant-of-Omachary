@@ -21,6 +21,7 @@ for _d in (CONFIG_DIR, DATA_DIR, CACHE_DIR, LOG_DIR):
 class Settings:
     assistant_name: str = "Nova"
     wake_word: str = "nova"
+    wake_model: str = "placeholder"  # wake-word model; integrate your own later
     language_mode: str = "auto"  # auto | en | hi | hinglish
     tts_voice: str = "placeholder"
     tts_speed: float = 1.0
@@ -28,12 +29,16 @@ class Settings:
     llm_model: str = "placeholder"  # placeholder until user selects a model
     llm_keep_alive_seconds: int = 90
     startup_greeting: bool = True
+    wake_enabled: bool = False  # enable after a real wake-word/STT provider is integrated
     quiet_hours_start: int = 23
     quiet_hours_end: int = 7
     push_to_talk_key: str = "ctrl+space"
     microphone_device: str | None = None
     speaker_device: str | None = None
-    memory_enabled: bool = True
+    memory_enabled: bool = False  # no long-term personal memory by default
+    session_retention_days: int = 7
+    max_sessions: int = 20
+    privacy_mode: bool = True
     permissions: dict[str, str] = field(default_factory=lambda: {
         "low": "auto",
         "medium": "confirm",

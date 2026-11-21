@@ -39,6 +39,9 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(content, content='mes
 CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
   INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
 END;
+CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+  INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+END;
 """
 
 
@@ -85,6 +88,58 @@ class MemoryStore:
                 (session_id, limit),
             ).fetchall()
         return [dict(r) for r in reversed(rows)]
+
+    def list_sessions(self, limit: int = 50) -> list[dict]:
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT s.id, s.started_at, s.ended_at, s.summary, "
+                "  (SELECT COUNT(*) FROM messages m WHERE m.session_id=s.id) AS message_count, "
+                "  (SELECT content FROM messages m WHERE m.session_id=s.id ORDER BY m.id DESC LIMIT 1) AS preview "
+                "FROM sessions s ORDER BY s.id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def session_messages(self, session_id: int) -> list[dict]:
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT role, content, created_at FROM messages WHERE session_id=? ORDER BY id ASC",
+                (session_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_session(self, session_id: int) -> None:
+        with self._conn() as c:
+            c.execute("DELETE FROM messages WHERE session_id=?", (session_id,))
+            c.execute("DELETE FROM sessions WHERE id=?", (session_id,))
+
+    def purge_old_sessions(self, retention_days: int, max_sessions: int) -> int:
+        cutoff = time.time() - max(0, retention_days) * 86400
+        removed = 0
+        with self._conn() as c:
+            ids = [r["id"] for r in c.execute(
+                "SELECT id FROM sessions WHERE started_at < ? ORDER BY id ASC", (cutoff,)
+            ).fetchall()]
+            keep = [r["id"] for r in c.execute(
+                "SELECT id FROM sessions ORDER BY id DESC LIMIT ?", (max(1, max_sessions),)
+            ).fetchall()]
+            keep_set = set(keep)
+            for sid in ids:
+                if sid not in keep_set:
+                    c.execute("DELETE FROM messages WHERE session_id=?", (sid,))
+                    c.execute("DELETE FROM sessions WHERE id=?", (sid,))
+                    removed += 1
+            # also enforce max count
+            all_ids = [r["id"] for r in c.execute("SELECT id FROM sessions ORDER BY id DESC").fetchall()]
+            for sid in all_ids[max(1, max_sessions):]:
+                c.execute("DELETE FROM messages WHERE session_id=?", (sid,))
+                c.execute("DELETE FROM sessions WHERE id=?", (sid,))
+                removed += 1
+        return removed
+
+    def purge_memories(self) -> None:
+        with self._conn() as c:
+            c.execute("DELETE FROM memories")
 
     def search(self, query: str, limit: int = 10) -> list[dict]:
         with self._conn() as c:

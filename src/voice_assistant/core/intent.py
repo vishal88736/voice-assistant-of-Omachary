@@ -55,6 +55,26 @@ def classify(text: str) -> Optional[tuple[str, dict]]:
     # system info
     if any(k in t for k in ["battery", "ram", "cpu", "system info", "storage", "disk"]):
         return ("system_info", {})
+    if "network" in t or "wifi" in t or "internet" in t:
+        return ("network_info", {})
+    if "screenshot" in t or "screen shot" in t:
+        return ("screenshot", {})
+    if "lock screen" in t or "screen lock" in t:
+        return ("power", {"action": "lock"})
+    if any(k in t for k in ["shutdown", "shut down", "power off"]):
+        return ("power", {"action": "shutdown"})
+    if "reboot" in t or "restart laptop" in t:
+        return ("power", {"action": "reboot"})
+    # file operations (permission-gated)
+    m = re.search(r"(?:delete|remove|hatao|mita do)\s+(?:file\s+)?(.+)", t)
+    if m:
+        return ("delete_path", {"path": m.group(1).strip()})
+    m = re.search(r"(?:rename|move)\s+(.+?)\s+to\s+(.+)", t)
+    if m:
+        return ("move_path", {"src": m.group(1).strip(), "dst": m.group(2).strip()})
+    m = re.search(r"(?:create|make|banao)\s+(?:folder|directory|dir)\s+(.+)", t)
+    if m:
+        return ("create_dir", {"path": m.group(1).strip()})
     # fullscreen
     if "fullscreen" in t:
         return ("toggle_fullscreen", {})

@@ -17,8 +17,7 @@ from ..security.permissions import PermissionManager
 from ..tools.registry import ToolRegistry
 from ..tools.system_tools import register_all
 from ..voice.audio import AudioRecorder
-from ..voice.stt import transcribe_file, record_and_transcribe
-from ..voice.tts import PiperTTS
+from ..voice.factory import get_stt, get_tts
 from ..voice.vad import contains_speech
 
 log = get_logger()
@@ -29,11 +28,16 @@ class Assistant:
         self.settings = settings or Settings.load()
         self.on_state = on_state or (lambda state, text: None)
         self.memory = MemoryStore()
+        # Privacy: forget long-term personal data and old sessions on startup.
+        self.memory.purge_old_sessions(self.settings.session_retention_days, self.settings.max_sessions)
+        if self.settings.privacy_mode:
+            self.memory.purge_memories()
         self.tools = ToolRegistry()
         self.permissions = PermissionManager(self.settings, confirm_callback=self._confirm)
         register_all(self.tools, self.settings, self.permissions)
         self.ollama = OllamaClient()
-        self.tts = PiperTTS(self.settings.tts_voice)
+        self.tts = get_tts(self.settings)
+        self.stt = get_stt(self.settings)
         self.recorder = AudioRecorder()
         self.session_id = self.memory.start_session()
         self.history: list[dict] = []
@@ -55,9 +59,37 @@ class Assistant:
         if self.settings.startup_greeting and self._is_greeting_time():
             greeting = self._greeting_text()
             self._say(greeting)
-        if enable_wake:
+        if enable_wake and self.settings.wake_enabled and self.settings.wake_model != "placeholder":
             self._wake_thread = threading.Thread(target=self._wake_loop, daemon=True)
             self._wake_thread.start()
+
+    def list_sessions(self) -> list[dict]:
+        return self.memory.list_sessions(self.settings.max_sessions)
+
+    def new_session(self) -> int:
+        self.memory.end_session(self.session_id, "Session ended")
+        self.session_id = self.memory.start_session()
+        self.history = []
+        return self.session_id
+
+    def load_session(self, session_id: int) -> None:
+        self.session_id = session_id
+        self.history = [
+            {"role": m["role"], "content": m["content"]}
+            for m in self.memory.session_messages(session_id)
+        ]
+
+    def delete_session(self, session_id: int) -> None:
+        self.memory.delete_session(session_id)
+        if session_id == self.session_id:
+            self.session_id = self.memory.start_session()
+            self.history = []
+
+    def forget_all(self) -> None:
+        self.memory.purge_memories()
+        for s in self.memory.list_sessions(100000):
+            self.memory.delete_session(s["id"])
+        self.new_session()
 
     def stop(self) -> None:
         self._running = False
@@ -137,17 +169,8 @@ class Assistant:
             self._say(reply)
             return reply
 
-        # retrieve relevant memories
-        mems = []
-        try:
-            hits = self.memory.search(text, limit=5)
-            for h in hits:
-                if h["role"] == "assistant":
-                    continue
-                mems.append(h["content"])
-        except Exception:
-            pass
-        msgs = build_messages(self.history[:-1], text, self.settings, mems[:5])
+        # Privacy: no long-term personal memory is injected into the model.
+        msgs = build_messages(self.history[:-1], text, self.settings, [])
         # ensure model loaded with keep_alive timeout
         keep_alive = self.settings.llm_keep_alive_seconds
         self.on_state("thinking", "")
@@ -213,7 +236,7 @@ class Assistant:
                 p = Path("/tmp/opencode/wake.wav")
                 p.parent.mkdir(parents=True, exist_ok=True)
                 self.recorder.save_wav(p, data)
-                text = transcribe_file(p).lower()
+                text = self.stt.transcribe(p).lower()
                 if not text:
                     continue
                 wake = self.settings.wake_word.lower()
@@ -225,7 +248,7 @@ class Assistant:
                     udata = self.recorder.stop()
                     up = Path("/tmp/opencode/utt.wav")
                     self.recorder.save_wav(up, udata)
-                    utext = transcribe_file(up)
+                    utext = self.stt.transcribe(up)
                     if utext:
                         self.process_text(utext)
             except Exception as e:
@@ -240,7 +263,7 @@ class Assistant:
         p = Path("/tmp/opencode/ptt.wav")
         p.parent.mkdir(parents=True, exist_ok=True)
         self.recorder.save_wav(p, data)
-        text = transcribe_file(p)
+        text = self.stt.transcribe(p)
         if text:
             return self.process_text(text)
         return ""
